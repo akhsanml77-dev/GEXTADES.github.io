@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gexta GIS - Peta Topografi & Analisis Elevasi Real-Time</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body, html { height: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        #map { width: 100%; height: 100%; z-index: 1; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        
+        /* Transisi panel samping */
+        #sidebar {
+            transition: transform 0.3s ease-in-out, width 0.3s ease-in-out;
+        }
+        #sidebar.collapsed {
+            transform: translateX(-100%);
+            width: 0 !important;
+            padding: 0 !important;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 flex h-screen w-screen overflow-hidden relative">
+
+    <!-- Tombol Toggle Panel Samping (Muncul Saat Panel Disembunyikan) -->
+    <button id="toggle-sidebar-btn" onclick="toggleSidebar()" class="absolute top-4 left-4 z-[1000] bg-slate-900/90 hover:bg-slate-800 text-white p-2.5 rounded-xl shadow-2xl flex items-center gap-2 border border-slate-700 backdrop-blur-md transition-all">
+        <svg id="toggle-icon" class="w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+        </svg>
+        <span id="toggle-text" class="text-xs font-semibold pr-1">Buka Panel</span>
+    </button>
+
+    <!-- Sidebar Panel Kiri -->
+    <div id="sidebar" class="w-[420px] bg-white/95 backdrop-blur-md border-r border-slate-200 flex flex-col h-full z-[999] shadow-2xl relative flex-shrink-0">
+        <!-- Header Sidebar -->
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+            <div class="flex items-center gap-3">
+                <div class="bg-emerald-500 p-2 rounded-xl text-white shadow-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base tracking-wide flex items-center gap-2">
+                        Gexta GIS <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">v2.5</span>
+                    </h1>
+                    <p class="text-[11px] text-slate-400">Peta Topografi & Analisis Elevasi</p>
+                </div>
+            </div>
+            <!-- Tombol Tutup Sidebar -->
+            <button onclick="toggleSidebar()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition" title="Tutup Panel">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Kolom Isi Sidebar -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+            
+            <!-- Kotak Pencarian Wilayah -->
+            <div class="space-y-2">
+                <label class="text-xs font-bold text-slate-700 uppercase tracking-wider">Cari Wilayah / Gunung / Kota</label>
+                <div class="flex gap-2">
+                    <div class="relative flex-1">
+                        <input type="text" id="search-input" placeholder="Misal: Bromo, Bandung, Monas..." class="w-full pl-3 pr-8 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:bg-white transition">
+                        <button onclick="clearSearch()" id="clear-search-btn" class="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 hidden">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                    </div>
+                    <button onclick="searchLocation()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Kartu Koordinat & Skala -->
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm">
+                <div class="flex justify-between items-center text-xs font-semibold text-slate-600 border-b border-slate-200 pb-2">
+                    <span id="coord-display">Lat: 0.0000, Lon: 0.0000</span>
+                    <button onclick="copyCoords()" class="text-emerald-600 hover:text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                        Salin
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-2 pt-1 text-xs">
+                    <div>
+                        <span class="text-slate-400 block text-[10px]">SKALA PETA (Perkiraan)</span>
+                        <span id="scale-ratio-box" class="font-bold text-slate-800">1 : 50,000</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block text-[10px]">TINGKAT ZOOM</span>
+                        <span id="zoom-box" class="font-bold text-slate-800">Zoom 14</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tombol Aksi Analisis Area -->
+            <button onclick="analyzeCurrentArea()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-md text-sm flex items-center justify-center gap-2 transition transform active:scale-[0.99]">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                Analisis Ketinggian Area Ini (DEM)
+            </button>
+
+            <!-- Panel Hasil Analisis Topografi -->
+            <div id="topo-results" class="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3 shadow-sm hidden">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wide">Analisis Topografi Wilayah</span>
+                    <span id="analyzed-location-name" class="text-xs font-bold text-emerald-700 truncate max-w-[180px]"></span>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <!-- Puncak / Tertinggi -->
+                    <div class="bg-emerald-50/60 border border-emerald-100 rounded-xl p-2.5 relative group">
+                        <span class="text-[10px] uppercase font-bold text-emerald-600 block flex items-center gap-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
+                            Tertinggi
+                        </span>
+                        <div class="text-lg font-extrabold text-emerald-900 mt-0.5" id="highest-val">-</div>
+                        <div class="text-[10px] text-slate-500 truncate mt-0.5" id="highest-coord">-</div>
+                        <button onclick="flyToPoint('highest')" class="absolute right-2 top-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white px-1.5 py-0.5 rounded shadow opacity-0 group-hover:opacity-100 transition">Lihat</button>
+                    </div>
+
+                    <!-- Lembah / Terendah -->
+                    <div class="bg-sky-50/60 border border-sky-100 rounded-xl p-2.5 relative group">
+                        <span class="text-[10px] uppercase font-bold text-sky-600 block flex items-center gap-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            Terendah
+                        </span>
+                        <div class="text-lg font-extrabold text-sky-900 mt-0.5" id="lowest-val">-</div>
+                        <div class="text-[10px] text-slate-500 truncate mt-0.5" id="lowest-coord">-</div>
+                        <button onclick="flyToPoint('lowest')" class="absolute right-2 top-2 text-[10px] bg-sky-600 hover:bg-sky-700 text-white px-1.5 py-0.5 rounded shadow opacity-0 group-hover:opacity-100 transition">Lihat</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div class="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        <span class="text-slate-400 block text-[10px]">Rata-rata Ketinggian</span>
+                        <span id="avg-val" class="font-bold text-slate-700">-</span>
+                    </div>
+                    <div class="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        <span class="text-slate-400 block text-[10px]">Beda Tinggi (Relief)</span>
+                        <span id="relief-val" class="font-bold text-slate-700">-</span>
+                    </div>
+                </div>
+
+                <!-- Grafik Penampang Elevasi -->
+                <div class="pt-2">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[11px] font-bold text-slate-600">Profil Penampang Elevasi</span>
+                        <span class="text-[10px] text-slate-400">Open-Meteo DEM</span>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-2 h-36">
+                        <canvas id="elevationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Legenda Klasifikasi Ketinggian Tanah -->
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                <span class="text-xs font-bold text-slate-700 block">Legenda Klasifikasi Ketinggian</span>
+                <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-600">
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-blue-500 inline-block flex-shrink-0"></span><span>< 0m (Pesisir/Laut)</span></div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-500 inline-block flex-shrink-0"></span><span>1 - 200m (Dataran Rendah)</span></div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-500 inline-block flex-shrink-0"></span><span>201 - 500m (Perbukitan)</span></div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-orange-600 inline-block flex-shrink-0"></span><span>501 - 1.500m (Dataran Tinggi)</span></div>
+                    <div class="flex items-center gap-1.5 col-span-2"><span class="w-3 h-3 rounded bg-red-700 inline-block flex-shrink-0"></span><span>> 1.500m (Pegunungan / Puncak)</span></div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer Sidebar -->
+        <div class="p-3 border-t border-slate-100 bg-slate-50 text-center text-[11px] text-slate-400">
+            Gexta GIS &copy; 2026 &bull; Peta Satelit & Topografi Global
+        </div>
+    </div>
+
+    <!-- Area Peta Utama -->
+    <div id="map" class="flex-1 h-full"></div>
+
+    <!-- Leaflet JS & Plugins -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Inisialisasi Peta (Default Satelit Nyata Esri World Imagery)
+        const map = L.map('map', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([-2.9761, 104.7754], 14);
+
+        // Tambahkan Kontrol Zoom di Kanan Atas
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        // Lapisan Peta Satelit Nyata (Esri)
+        const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(map);
+
+        // Lapisan Label Jalan Tambahan (Opsional di atas satelit)
+        const labelsLayer = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19
+        }).addTo(map);
+
+        // Skala Dinamis di Bawah Kanan Peta
+        L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+
+        let currentMarker = null;
+        let measurePoints = [];
+        let measureLine = null;
+        let measureMarkers = [];
+        let activeMode = 'inspect'; // 'inspect', 'measure', 'dem'
+        let analysisDataCache = null;
+
+        // Panel Kiri Collapse Logic
+        let isSidebarOpen = true;
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const toggleBtn = document.getElementById('toggle-sidebar-btn');
+            const toggleText = document.getElementById('toggle-text');
+            const toggleIcon = document.getElementById('toggle-icon');
+            
+            isSidebarOpen = !isSidebarOpen;
+            if (isSidebarOpen) {
+                sidebar.classList.remove('collapsed');
+                toggleBtn.classList.add('hidden'); // Sembunyikan tombol saat panel terbuka (ada tombol X di panel)
+            } else {
+                sidebar.classList.add('collapsed');
+                toggleBtn.classList.remove('hidden'); // Tampilkan tombol melayang saat panel ditutup
+            }
+            setTimeout(() => { map.invalidateSize(); }, 300);
+        }
+
+        // Pastikan tombol toggle disembunyikan saat awal karena panel terbuka penuh
+        document.getElementById('toggle-sidebar-btn').classList.add('hidden');
+
+        // Kontrol Tombol Kanan Atas Peta (Mode Tools)
+        const toolsControl = L.control({ position: 'topright' });
+        toolsControl.onAdd = function(map) {
+            const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200 mt-12');
+            div.innerHTML = `
+                <div class="flex flex-col bg-white text-xs font-medium text-slate-700 divide-y divide-slate-100">
+                    <button onclick="setMode('measure')" id="btn-measure" class="px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2 transition text-left">
+                        <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                        Ukur Jarak & Profil
+                    </button>
+                    <button onclick="setMode('inspect')" id="btn-inspect" class="px-3.5 py-2.5 bg-emerald-50 text-emerald-800 font-semibold flex items-center gap-2 transition text-left">
+                        <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        Titik Sampel DEM
+                    </button>
+                    <button onclick="panToCurrentLocation()" class="px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2 transition text-left">
+                        <svg class="w-4 h-4 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        Lokasi Saya
+                    </button>
+                </div>
+            `;
+            return div;
+        };
+        toolsControl.addTo(map);
+
+        function setMode(mode) {
+            activeMode = mode;
+            document.getElementById('btn-measure').className = mode === 'measure' ? 'px-3.5 py-2.5 bg-emerald-50 text-emerald-800 font-semibold flex items-center gap-2 transition text-left' : 'px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2 transition text-left';
+            document.getElementById('btn-inspect').className = mode === 'inspect' ? 'px-3.5 py-2.5 bg-emerald-50 text-emerald-800 font-semibold flex items-center gap-2 transition text-left' : 'px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2 transition text-left';
+            
+            if (mode === 'inspect') {
+                clearMeasure();
+            }
+        }
+
+        // Update Skala & Koordinat saat Peta Bergeser/Zoom
+        map.on('move zoom', updateMapMetrics);
+
+        function updateMapMetrics() {
+            const center = map.getCenter();
+            document.getElementById('coord-display').innerText = `Lat: ${center.lat.toFixed(4)}, Lon: ${center.lng.toFixed(4)}`;
+            
+            const zoom = map.getZoom();
+            document.getElementById('zoom-box').innerText = `Zoom ${zoom}`;
+
+            // Perkiraan Skala Numerik Berdasarkan Zoom & Lebar Layar
+            const resolution = (156543.03392 * Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, zoom);
+            let approxScale = Math.round(resolution * 3779.527559); // Konversi pixel ke meter peta standar
+            if (approxScale < 1000) approxScale = Math.round(approxScale / 100) * 100;
+            else approxScale = Math.round(approxScale / 1000) * 1000;
+            document.getElementById('scale-ratio-box').innerText = `1 : ${approxScale.toLocaleString()}`;
+        }
+        updateMapMetrics();
+
+        // Klik Peta untuk Inspeksi Ketinggian atau Ukur Jarak
+        map.on('click', async function(e) {
+            const { lat, lng } = e.latlng;
+
+            if (activeMode === 'inspect') {
+                fetchElevation(lat, lng, async (elevation) => {
+                    let klasifikasi = "Dataran Rendah";
+                    let warnaBadge = "bg-emerald-100 text-emerald-800";
+                    if (elevation < 0) { klasifikasi = "Pesisir / Laut"; warnaBadge = "bg-blue-100 text-blue-800"; }
+                    else if (elevation <= 200) { klasifikasi = "Dataran Rendah"; warnaBadge = "bg-emerald-100 text-emerald-800"; }
+                    else if (elevation <= 500) { klasifikasi = "Perbukitan"; warnaBadge = "bg-amber-100 text-amber-800"; }
+                    else if (elevation <= 1500) { klasifikasi = "Dataran Tinggi"; warnaBadge = "bg-orange-100 text-orange-800"; }
+                    else { klasifikasi = "Pegunungan / Puncak"; warnaBadge = "bg-red-100 text-red-800"; }
+
+                    if (currentMarker) map.removeLayer(currentMarker);
+                    currentMarker = L.marker([lat, lng]).addTo(map)
+                        .bindPopup(`
+                            <div class="p-2 space-y-1">
+                                <span class="font-bold text-xs text-slate-800 block">Titik Inspeksi Elevasi</span>
+                                <div class="text-sm font-extrabold text-emerald-700">${elevation !== null ? elevation + ' mdpl' : 'Tidak tersedia'}</div>
+                                <div class="text-[11px] font-medium px-2 py-0.5 rounded inline-block ${warnaBadge}">Klasifikasi: ${klasifikasi}</div>
+                                <div class="text-[10px] text-slate-400 pt-1">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
+                            </div>
+                        `).openPopup();
+                });
+            } else if (activeMode === 'measure') {
+                measurePoints.push([lat, lng]);
+                const m = L.circleMarker([lat, lng], { radius: 5, color: '#10b981', fillColor: '#10b981', fillOpacity: 1 }).addTo(map);
+                measureMarkers.push(m);
+
+                if (measurePoints.length > 1) {
+                    if (measureLine) map.removeLayer(measureLine);
+                    measureLine = L.polyline(measurePoints, { color: '#059669', weight: 4, dashArray: '5, 5' }).addTo(map);
+                    
+                    if (measurePoints.length >= 2) {
+                        calculatePathElevationProfile(measurePoints);
+                    }
+                }
+            }
+        });
+
+        // Ambil Data Ketinggian dari Open-Meteo Elevation API
+        async function fetchElevation(lat, lng, callback) {
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`);
+                const data = await res.json();
+                if (data && data.elevation && data.elevation.length > 0) {
+                    callback(data.elevation[0]);
+                } else {
+                    callback(0);
+                }
+            } catch (err) {
+                console.error("Gagal mengambil elevasi:", err);
+                callback(null);
+            }
+        }
+
+        // Cari Lokasi Berdasarkan Nama (Geocoding Nominatim)
+        async function searchLocation() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) return;
+
+            document.getElementById('clear-search-btn').classList.remove('hidden');
+
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    const lat = parseFloat(data[0].lat);
+                    const lon = parseFloat(data[0].lon);
+                    map.setView([lat, lon], 14);
+
+                    fetchElevation(lat, lon, (elev) => {
+                        if (currentMarker) map.removeLayer(currentMarker);
+                        currentMarker = L.marker([lat, lon]).addTo(map)
+                            .bindPopup(`<b>${data[0].display_name}</b><br>Ketinggian: ${elev} mdpl`).openPopup();
+                    });
+                } else {
+                    alert("Lokasi tidak ditemukan. Coba kata kunci lain.");
+                }
+            } catch (err) {
+                console.error("Kesalahan pencarian:", err);
+            }
+        }
+
+        function clearSearch() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('clear-search-btn').classList.add('hidden');
+        }
+
+        document.getElementById('search-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchLocation();
+        });
+
+        // Analisis Topografi Wilayah Saat Ini (Grid Area 3x3 di sekitar pusat peta)
+        async function analyzeCurrentArea() {
+            const center = map.getCenter();
+            const latStep = 0.008;
+            const lonStep = 0.008;
+            
+            let coords = [];
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    coords.push({
+                        lat: center.lat + (dx * latStep),
+                        lng: center.lng + (dy * lonStep)
+                    });
+                }
+            }
+
+            // Ambil nama wilayah dari pusat
+            let locationName = "Area Sekitar Peta";
+            try {
+                const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${center.lat}&lon=${center.lng}`);
+                const geoData = await geoRes.json();
+                if (geoData && geoData.display_name) {
+                    const parts = geoData.display_name.split(',');
+                    locationName = parts[0] + (parts[1] ? ',' + parts[1] : '');
+                }
+            } catch(e) {}
+
+            // Request batch elevasi ke Open-Meteo
+            const lats = coords.map(c => c.lat.toFixed(4)).join(',');
+            const lngs = coords.map(c => c.lng.toFixed(4)).join(',');
+
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lngs}`);
+                const data = await res.json();
+                
+                if (data && data.elevation) {
+                    const elevations = data.elevation;
+                    let validElevs = elevations.map((el, i) => ({ el: el !== null ? el : 0, ...coords[i] }));
+                    
+                    validElevs.sort((a, b) => a.el - b.el);
+                    const lowest = validElevs[0];
+                    const highest = validElevs[validElevs.length - 1];
+                    const sum = validElevs.reduce((acc, curr) => acc + curr.el, 0);
+                    const avg = Math.round(sum / validElevs.length);
+                    const relief = highest.el - lowest.el;
+
+                    analysisDataCache = { lowest, highest };
+
+                    // Tampilkan di UI Panel
+                    document.getElementById('topo-results').classList.remove('hidden');
+                    document.getElementById('analyzed-location-name').innerText = locationName;
+                    document.getElementById('highest-val').innerText = highest.el + ' mdpl';
+                    document.getElementById('highest-coord').innerText = `${highest.lat.toFixed(3)}, ${highest.lng.toFixed(3)}`;
+                    document.getElementById('lowest-val').innerText = lowest.el + ' mdpl';
+                    document.getElementById('lowest-coord').innerText = `${lowest.lat.toFixed(3)}, ${lowest.lng.toFixed(3)}`;
+                    document.getElementById('avg-val').innerText = avg + ' mdpl';
+                    document.getElementById('relief-val').innerText = relief + ' m';
+
+                    // Buat Chart Profil Elevasi
+                    renderElevationChart(validElevs.map(v => v.el));
+                }
+            } catch (err) {
+                console.error("Gagal menganalisis area:", err);
+                alert("Gagal memuat data elevasi wilayah.");
+            }
+        }
+
+        let elevationChartInstance = null;
+        function renderElevationChart(elevations) {
+            const ctx = document.getElementById('elevationChart').getContext('2d');
+            if (elevationChartInstance) elevationChartInstance.destroy();
+
+            elevationChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: elevations.map((_, i) => 'Titik ' + (i + 1)),
+                    datasets: [{
+                        label: 'Elevasi (mdpl)',
+                        data: elevations,
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#059669'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { font: { size: 9 } }, grid: { display: false } },
+                        y: { ticks: { font: { size: 9 } }, grid: { color: '#f1f5f9' } }
+                    }
+                }
+            });
+        }
+
+        function flyToPoint(type) {
+            if (!analysisDataCache) return;
+            const target = analysisDataCache[type];
+            map.setView([target.lat, target.lng], 16);
+            if (currentMarker) map.removeLayer(currentMarker);
+            currentMarker = L.marker([target.lat, target.lng]).addTo(map)
+                .bindPopup(`<b>${type === 'highest' ? 'Puncak Tertinggi' : 'Titik Terendah'}</b><br>Ketinggian: ${target.el} mdpl`).openPopup();
+        }
+
+        async function calculatePathElevationProfile(points) {
+            let lats = points.map(p => p[0].toFixed(4)).join(',');
+            let lngs = points.map(p => p[1].toFixed(4)).join(',');
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lngs}`);
+                const data = await res.json();
+                if (data && data.elevation) {
+                    document.getElementById('topo-results').classList.remove('hidden');
+                    document.getElementById('analyzed-location-name').innerText = "Jalur Ukur Peta";
+                    document.getElementById('highest-val').innerText = Math.max(...data.elevation) + ' mdpl';
+                    document.getElementById('lowest-val').innerText = Math.min(...data.elevation) + ' mdpl';
+                    document.getElementById('avg-val').innerText = Math.round(data.elevation.reduce((a,b)=>a+b,0)/data.elevation.length) + ' mdpl';
+                    document.getElementById('relief-val').innerText = (Math.max(...data.elevation) - Math.min(...data.elevation)) + ' m';
+                    renderElevationChart(data.elevation);
+                }
+            } catch(e) {}
+        }
+
+        function clearMeasure() {
+            measurePoints = [];
+            if (measureLine) map.removeLayer(measureLine);
+            measureMarkers.forEach(m => map.removeLayer(m));
+            measureMarkers = [];
+        }
+
+        function panToCurrentLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    map.setView([lat, lng], 16);
+                    fetchElevation(lat, lng, (elev) => {
+                        if (currentMarker) map.removeLayer(currentMarker);
+                        currentMarker = L.marker([lat, lng]).addTo(map)
+                            .bindPopup(`<b>Lokasi Anda</b><br>Ketinggian: ${elev} mdpl`).openPopup();
+                    });
+                }, () => {
+                    alert("Tidak dapat mengakses GPS Anda.");
+                });
+            } else {
+                alert("Geolocation tidak didukung oleh browser ini.");
+            }
+        }
+
+        function copyCoords() {
+            const text = document.getElementById('coord-display').innerText;
+            navigator.clipboard.writeText(text);
+            alert("Koordinat disalin: " + text);
+        }
+    </script>
+</body>
+</html>
